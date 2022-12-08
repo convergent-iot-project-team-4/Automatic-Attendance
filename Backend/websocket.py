@@ -10,7 +10,31 @@ app = FastAPI()
 # html파일을 서비스할 수 있는 jinja설정 (/templates 폴더사용)
 templates = Jinja2Templates(directory="templates")
 
+lock = 0
+device_names = []
+
 # 웹소켓 연결을 테스트 할 수 있는 웹페이지 (http://127.0.0.1:8000/client)
+@app.get("/acquire_lock")
+def acquire_lock():
+    # lock
+    global lock
+    if lock == 0:
+        lock = 1
+        return True
+    else:
+        return False
+
+@app.get("/release_lock")
+def release_lock():
+    # lock
+    global lock
+    if lock == 1:
+        lock = 0
+        return True
+    else:
+        return False
+
+
 @app.get("/client")
 async def client(request: Request):
     # /templates/client.html파일을 response함
