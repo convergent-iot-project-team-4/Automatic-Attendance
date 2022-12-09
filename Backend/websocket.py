@@ -74,29 +74,24 @@ async def tellDeviceToChirp(student, corner, socket):
     XXX = students[student] # X
     AAA = corners[corner] # A
 
-    await XXX.send_text(f"녹음 시작해")
-    await AAA.send_text(f"녹음 시작해")
+    await XXX.send_text(f"start_recording")
+    await AAA.send_text(f"start_recording")
 
-    await XXX.send_text(f"빨리 {corner}한테 첩 보내")
+    await XXX.send_text(f"play_chirp")
     return
 
 async def test2(student, corner, socket):
     AAA = corners[corner] # A
-    await AAA.send_text(f"빨리 {student}한테 첩 보내")
+    await AAA.send_text(f"play_chirp")
     return
 
 async def test3(student, corner, socket):
     XXX = students[student] # X
     AAA = corners[corner] # A
-    first_start_recording = asyncio.create_task(
-        XXX.send_text("녹음 그만하고 파일 내 놔")
-    )
-    second_start_recording = asyncio.create_task(
-        AAA.send_text("녹음 그만하고 파일 내 놔")
-    )
 
-    await first_start_recording
-    await second_start_recording
+    await XXX.send_text("send_wav_file")
+    await AAA.send_text("send_wav_file")
+
     return True
 
 async def acquire_lock():
@@ -158,9 +153,9 @@ async def websocket_endpoint(websocket: WebSocket):
             init(data["device_name"], websocket)
         elif data["type"] == "start":
             await tellDeviceToChirp("X", "A", websocket)
-        elif data["type"] == "XXX":
+        elif data["type"] == "complete_chirp":
             await test2("X", "A", websocket)
-        elif data["type"] == "AAA":
+        elif data["type"] == "complete_chirp":
             await test3("X", "A", websocket)
         elif data["type"] == "student_corner_file":
             f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
