@@ -1,3 +1,6 @@
+#!usr/bin/python
+# -*- coding: utf8 -*-
+
 from typing import List
 from fastapi import FastAPI, WebSocket, Request, File, UploadFile
 
@@ -5,72 +8,95 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.logger import logger
 import time
+import asyncio
+import matlab.engine # MATLAB engine API import
 
 app = FastAPI()
-# html파일을 서비스할 수 있는 jinja설정 (/templates 폴더사용)
 templates = Jinja2Templates(directory="templates")
 
 lock = 0
-professor = {}
-students = {}
-corners = {} # {device_name:IP}
+professor = {} # {device_name:WebSocket}
+students = {} # {device_name:WebSocket}
+corners = {} # {device_name:WebSocket}
 
 # web sockets; type: [WebSocket]
 all_sockets = [] 
 
-def send_point(distance):
-    # professor 찾기
-    prof_tablet = [x for x in professor if x.client  == websocket_ip][0]
-    prof_tablet.send_text(f"A랑 X의 거리는 {distance}야~")
+def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"):
+    eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
+    ret = eng.BeepBeep(fileA, fileB, chirp)
+    print(ret)
+    return ret
 
+def send_point(distance, websocket):
+    # professor 찾기
+    prof_tablet = websocket
+    prof_tablet.send_text(distance)
+    
 # init
-def init(device_name = "", websocket_ip = ""):
+def init(device_name, websocket):
     # Professor
     if device_name.lower() == "professor":
-        professor[websocket_ip] = device_name
+        professor["professor"] = websocket
         return True
 
     # Student, Corner
-    if websocket_ip not in [x.client for x in all_sockets]:
-        return False
+    if device_name.upper() in ["A", "B", "C", "D"]:
+        corners[device_name] = websocket
+        return True
+    elif device_name.upper() in ["X", "Y", "Z"]:
+        students[device_name] = websocket
+        return True
     else:
-        t = [x for x in all_sockets if x.client  == websocket_ip]
-        all_sockets.remove(t[0])
+        return False
 
-        if device_name.upper() in ["A", "B", "C", "D"]:
-            corners[device_name] = websocket_ip
-            return True
-        elif device_name.upper() in ["X", "Y", "Z"]:
-            students[device_name] = websocket_ip
-            return True
-        else:
-            return False
-
-async def start():
+async def start_chirps():
     if len(students) + len(corners) < 4:
         return False
     else:
         # (A => X) chirp 재생
         # A의 websocket 찾기
         await tellDeviceToChirp("A", "X")
-        await tellDeviceToChirp("A", "Y")
-        await tellDeviceToChirp("A", "Z")
+        BeepBeep()
+
+        # await tellDeviceToChirp("A", "Y")
+        # await tellDeviceToChirp("A", "Z")
         
 
 async def tellDeviceToChirp(first, second):
     first_send = [x for x in all_sockets if x.client  == students[f"{first}"]][0]
-    await first_send.send_text(f"빨리 {second}한테 첩 보내")
-    data = await first_send.receive_text()
-
     second_send = [x for x in all_sockets if x.client  == corners[f"{second}"]][0]
+
+    first_start_recording = asyncio.create_task(
+        first_send.send_text(f"녹음 시작해")
+    )
+    second_start_recording = asyncio.create_task(
+        second_send.send_text(f"녹음 시작해")
+    )
+
+    await first_start_recording
+    await second_start_recording
+
+    await first_send.send_text(f"빨리 {second}한테 첩 보내")
+    await first_send.receive_text() # 다 했어 받을때까지 기다림
+
     await second_send.send_text(f"빨리 {first}한테 첩 보내")
-    data = await second_send.receive_text()
+    await second_send.receive_text() # 다 했어 받을때까지 기다림
 
-    first_send.send_text("녹음 그만하고 파일 내 놔")
-    await second_send.send_text("녹음 그만하고 파일 내 놔")
 
-    f_file = first_send.receive_bytes()
-    s_file = second_send.receive_bytes()
+    first_start_recording = asyncio.create_task(
+        first_send.send_text("녹음 그만하고 파일 내 놔")
+    )
+    second_start_recording = asyncio.create_task(
+        second_send.send_text("녹음 그만하고 파일 내 놔")
+    )
+
+    await first_start_recording
+    await second_start_recording
+    
+
+    f_file = await first_send.receive_bytes()
+    s_file = await second_send.receive_bytes()
 
     f = open(f'uploaded_files/{first}_{second}.wav', 'w')
     f.write(f_file)
@@ -114,7 +140,7 @@ async def receive_audio_files(files: List[bytes] = File(...), sender_device_name
     return True
 
 @app.get("/test_files/")
-async def receive_audio_files(files: List[bytes] = File(...)):
+async def test_files(files: List[bytes] = File(...)):
     contents = """
         <body>
             <form action="/receive_audio_files/" enctype="multipart/form-data" method="get">
@@ -138,9 +164,9 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"message received : {data} from : {websocket.client}")
 
         if data["type"] == "init":
-            init(data["device_name"], data["websocket_ip"])
+            init(data["device_name"], websocket)
         elif data["type"] == "start":
-            start()
+            start_chirps()
         else:
             print("정의되지 않은 type입니다.")
     return
