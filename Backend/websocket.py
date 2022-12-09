@@ -63,12 +63,10 @@ async def start_chirps(socket):
     else:
         # (A => X) chirp 재생
         # A의 websocket 찾기
-        await tellDeviceToChirp("X", "A", socket)
-        BeepBeep()
-
-        # await tellDeviceToChirp("A", "Y")
-        # await tellDeviceToChirp("A", "Z")
-        
+        for s in students.keys():
+            for c in corners.keys():
+                await tellDeviceToChirp(s, c, socket)
+                BeepBeep()
 
 async def tellDeviceToChirp(student, corner, socket):
     XXX = students[student] # X
@@ -158,20 +156,20 @@ async def websocket_endpoint(websocket: WebSocket):
         elif data["type"] == "complete_chirp":
             await test3("X", "A", websocket)
         elif data["type"] == "student_corner_file":
-            f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
-            f.write(data["body"])
-            f.close()
+            #player = data["player"]
+            #listener = data["listener"]
 
             # 처리하기
             # base64 -> wav
-            directory = f"{student}_{corner}"
-            os.makedirs(directory, exist_ok=True)
-            wav_file = open(f"{student}_{corner}/devA_25.wav", "wb")
+            # directory = f"{student}_{corner}"
+            # os.makedirs(directory, exist_ok=True)
+            # wav_file = open(f"{student}_{corner}/devA_25.wav", "wb")
+            wav_file = open(f'uploaded_files/test.wav', 'wb')
             decode_string = base64.b64decode(data["body"])
             wav_file.write(decode_string)
             
-            if len(os.listdir(directory)) == 2:
-                BeepBeep()
+            # if len(os.listdir(directory)) == 2:
+            # BeepBeep()
 
         elif data["type"] == "corner_student_file":    
             f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
