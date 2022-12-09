@@ -51,36 +51,33 @@ def init(device_name, websocket):
         return False
 
 async def start_chirps():
-    if len(students) + len(corners) < 4:
+    if len(students) + len(corners) < 0:
         return False
     else:
         # (A => X) chirp 재생
         # A의 websocket 찾기
-        await tellDeviceToChirp("A", "X")
+        await tellDeviceToChirp("X", "A")
         BeepBeep()
 
         # await tellDeviceToChirp("A", "Y")
         # await tellDeviceToChirp("A", "Z")
         
 
-async def tellDeviceToChirp(first, second):
-    first_send = [x for x in all_sockets if x.client  == students[f"{first}"]][0]
-    second_send = [x for x in all_sockets if x.client  == corners[f"{second}"]][0]
+async def tellDeviceToChirp(student, corner):
+    first_send = students[student]
+    second_send = corners[corner]
 
-    first_start_recording = asyncio.create_task(
-        first_send.send_text(f"녹음 시작해")
-    )
-    second_start_recording = asyncio.create_task(
-        second_send.send_text(f"녹음 시작해")
-    )
+    await first_send.send_text(f"녹음 시작해")
+    await second_send.send_text(f"녹음 시작해")
 
-    await first_start_recording
-    await second_start_recording
+    first_send.send_text(f"빨리 {corner}한테 첩 보내")
+    # cannot call recv while another coroutine is already waiting for the next message
+    while True:
+        data = await first_send.receive_text() # cannot call recv while another coroutine is already waiting for the next message
+    # await first_send.receive_text() # 다 했어 받을때까지 기다림 -> 여기서 터짐, 
+    # cannot call recv while another coroutine is already waiting for the next message
 
-    await first_send.send_text(f"빨리 {second}한테 첩 보내")
-    await first_send.receive_text() # 다 했어 받을때까지 기다림
-
-    await second_send.send_text(f"빨리 {first}한테 첩 보내")
+    second_send.send_text(f"빨리 {student}한테 첩 보내")
     await second_send.receive_text() # 다 했어 받을때까지 기다림
 
 
@@ -98,11 +95,11 @@ async def tellDeviceToChirp(first, second):
     f_file = await first_send.receive_bytes()
     s_file = await second_send.receive_bytes()
 
-    f = open(f'uploaded_files/{first}_{second}.wav', 'w')
+    f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
     f.write(f_file)
     f.close()
 
-    f = open(f'uploaded_files/{second}_{first}.wav', 'w')
+    f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
     f.write(s_file)
     f.close()
 
@@ -166,7 +163,7 @@ async def websocket_endpoint(websocket: WebSocket):
         if data["type"] == "init":
             init(data["device_name"], websocket)
         elif data["type"] == "start":
-            start_chirps()
+            await start_chirps()
         else:
             print("정의되지 않은 type입니다.")
     return
