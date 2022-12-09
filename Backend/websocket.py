@@ -2,7 +2,7 @@
 # -*- coding: utf8 -*-
 
 from typing import List
-from fastapi import FastAPI, WebSocket, Request, File, UploadFile
+from fastapi import FastAPI, WebSocket, Request, File, UploadFile, WebSocketDisconnect
 
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -10,6 +10,9 @@ from fastapi.logger import logger
 import time
 import asyncio
 import matlab.engine # MATLAB engine API import
+
+import base64
+import os
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -26,15 +29,19 @@ def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"
     eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
     ret = eng.BeepBeep(fileA, fileB, chirp)
     print(ret)
-    return ret
+    _send_point(ret, professor_websocket=professor["professor"])
+    # return ret
 
-def send_point(distance, websocket):
+def _send_point(distance, professor_websocket):
     # professor 찾기
-    prof_tablet = websocket
-    prof_tablet.send_text(distance)
+    professor_websocket.send_text(distance)
     
 # init
-def init(device_name, websocket):
+def init(device_name: str, websocket: WebSocket):
+    global professor
+    global corners
+    global students
+
     # Professor
     if device_name.lower() == "professor":
         professor["professor"] = websocket
@@ -44,65 +51,52 @@ def init(device_name, websocket):
     if device_name.upper() in ["A", "B", "C", "D"]:
         corners[device_name] = websocket
         return True
-    elif device_name.upper() in ["X", "Y", "Z"]:
+    if device_name.upper() in ["X", "Y", "Z"] or device_name.isnumeric():
         students[device_name] = websocket
         return True
     else:
         return False
 
-async def start_chirps():
+async def start_chirps(socket):
     if len(students) + len(corners) < 0:
         return False
     else:
         # (A => X) chirp 재생
         # A의 websocket 찾기
-        await tellDeviceToChirp("X", "A")
+        await tellDeviceToChirp("X", "A", socket)
         BeepBeep()
 
         # await tellDeviceToChirp("A", "Y")
         # await tellDeviceToChirp("A", "Z")
         
 
-async def tellDeviceToChirp(student, corner):
-    first_send = students[student]
-    second_send = corners[corner]
+async def tellDeviceToChirp(student, corner, socket):
+    XXX = students[student] # X
+    AAA = corners[corner] # A
 
-    await first_send.send_text(f"녹음 시작해")
-    await second_send.send_text(f"녹음 시작해")
+    await XXX.send_text(f"녹음 시작해")
+    await AAA.send_text(f"녹음 시작해")
 
-    first_send.send_text(f"빨리 {corner}한테 첩 보내")
-    # cannot call recv while another coroutine is already waiting for the next message
-    while True:
-        data = await first_send.receive_text() # cannot call recv while another coroutine is already waiting for the next message
-    # await first_send.receive_text() # 다 했어 받을때까지 기다림 -> 여기서 터짐, 
-    # cannot call recv while another coroutine is already waiting for the next message
+    await XXX.send_text(f"빨리 {corner}한테 첩 보내")
+    return
 
-    second_send.send_text(f"빨리 {student}한테 첩 보내")
-    await second_send.receive_text() # 다 했어 받을때까지 기다림
+async def test2(student, corner, socket):
+    AAA = corners[corner] # A
+    await AAA.send_text(f"빨리 {student}한테 첩 보내")
+    return
 
-
+async def test3(student, corner, socket):
+    XXX = students[student] # X
+    AAA = corners[corner] # A
     first_start_recording = asyncio.create_task(
-        first_send.send_text("녹음 그만하고 파일 내 놔")
+        XXX.send_text("녹음 그만하고 파일 내 놔")
     )
     second_start_recording = asyncio.create_task(
-        second_send.send_text("녹음 그만하고 파일 내 놔")
+        AAA.send_text("녹음 그만하고 파일 내 놔")
     )
 
     await first_start_recording
     await second_start_recording
-    
-
-    f_file = await first_send.receive_bytes()
-    s_file = await second_send.receive_bytes()
-
-    f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
-    f.write(f_file)
-    f.close()
-
-    f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
-    f.write(s_file)
-    f.close()
-
     return True
 
 async def acquire_lock():
@@ -163,9 +157,45 @@ async def websocket_endpoint(websocket: WebSocket):
         if data["type"] == "init":
             init(data["device_name"], websocket)
         elif data["type"] == "start":
-            await start_chirps()
+            await tellDeviceToChirp("X", "A", websocket)
+        elif data["type"] == "XXX":
+            await test2("X", "A", websocket)
+        elif data["type"] == "AAA":
+            await test3("X", "A", websocket)
+        elif data["type"] == "student_corner_file":
+            f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
+            f.write(data["body"])
+            f.close()
+
+            # 처리하기
+            # base64 -> wav
+            directory = f"{student}_{corner}"
+            os.makedirs(directory, exist_ok=True)
+            wav_file = open(f"{student}_{corner}/devA_25.wav", "wb")
+            decode_string = base64.b64decode(data["body"])
+            wav_file.write(decode_string)
+            
+            if len(os.listdir(directory)) == 2:
+                BeepBeep()
+
+        elif data["type"] == "corner_student_file":    
+            f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
+            f.write(data["body"])
+            f.close() 
+            
+            # 처리하기
+            # base64 -> wav
+            directory = f"{student}_{corner}"
+            os.makedirs(directory, exist_ok=True)
+            wav_file = open(f"{student}_{corner}/devA_25.wav", "wb")
+            decode_string = base64.b64decode(data["body"])
+            wav_file.write(decode_string)
+
+            if len(os.listdir(directory)) == 2:
+                BeepBeep()
+
         else:
-            print("정의되지 않은 type입니다.")
+            print("????")
     return
     
 
