@@ -3,6 +3,7 @@
 
 from typing import List
 from fastapi import FastAPI, WebSocket, Request, File, UploadFile, WebSocketDisconnect
+import json
 
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -37,58 +38,40 @@ def _send_point(distance, professor_websocket):
     professor_websocket.send_text(distance)
     
 # init
-def init(device_name: str, websocket: WebSocket):
+def init(device_name: str, device_type:str, websocket: WebSocket):
     global professor
     global corners
     global students
 
     # Professor
-    if device_name.lower() == "professor":
+    if device_type == "professor":
         professor["professor"] = websocket
         return True
 
     # Student, Corner
-    if device_name.upper() in ["A", "B", "C", "D"]:
+    if device_type == "corner":
         corners[device_name] = websocket
         return True
-    if device_name.upper() in ["X", "Y", "Z"] or device_name.isnumeric():
+    if device_type == "student":
         students[device_name] = websocket
         return True
     else:
         return False
 
-async def start_chirps(socket):
-    if len(students) + len(corners) < 0:
-        return False
-    else:
-        # (A => X) chirp 재생
-        # A의 websocket 찾기
-        for s in students.keys():
-            for c in corners.keys():
-                await tellDeviceToChirp(s, c, socket)
-                BeepBeep()
+async def tellDeviceToChirp(student: WebSocket, corner: WebSocket):
+    await student.send_text(f"start_recording")
+    await corner.send_text(f"start_recording")
 
-async def tellDeviceToChirp(student, corner, socket):
-    XXX = students[student] # X
-    AAA = corners[corner] # A
-
-    await XXX.send_text(f"start_recording")
-    await AAA.send_text(f"start_recording")
-
-    await XXX.send_text(f"play_chirp")
+    await student.send_text(f"play_chirp")
     return
 
-async def test2(student, corner, socket):
-    AAA = corners[corner] # A
-    await AAA.send_text(f"play_chirp")
+async def tellNextDeviceToChirp(student, corner):
+    await corner.send_text(f"play_chirp")
     return
 
-async def test3(student, corner, socket):
-    XXX = students[student] # X
-    AAA = corners[corner] # A
-
-    await XXX.send_text("send_wav_file")
-    await AAA.send_text("send_wav_file")
+async def tellDeviceToSendWavFile(student, corner):
+    await student.send_text("send_wav_file")
+    await corner.send_text("send_wav_file")
 
     return True
 
@@ -150,11 +133,11 @@ async def websocket_endpoint(websocket: WebSocket):
         if data["type"] == "init":
             init(data["device_name"], websocket)
         elif data["type"] == "start":
-            await tellDeviceToChirp("X", "A", websocket)
+            await tellDeviceToChirp(s, c)
         elif data["type"] == "complete_chirp":
-            await test2("X", "A", websocket)
+            await tellNextDeviceToChirp("X", "A", websocket)
         elif data["type"] == "complete_chirp":
-            await test3("X", "A", websocket)
+            await tellDeviceToSendWavFile("X", "A", websocket)
         elif data["type"] == "student_corner_file":
             #player = data["player"]
             #listener = data["listener"]
