@@ -4,18 +4,85 @@ from fastapi import FastAPI, WebSocket, Request, File, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.logger import logger
-import MyMatlab
+import time
 
 app = FastAPI()
 # html파일을 서비스할 수 있는 jinja설정 (/templates 폴더사용)
 templates = Jinja2Templates(directory="templates")
 
 lock = 0
-device_names = []
+professor = {}
+students = {}
+corners = {} # {device_name:IP}
 
-# 웹소켓 연결을 테스트 할 수 있는 웹페이지 (http://127.0.0.1:8000/client)
-@app.get("/acquire_lock")
-def acquire_lock():
+# web sockets; type: [WebSocket]
+all_sockets = [] 
+
+def send_point(distance):
+    # professor 찾기
+    prof_tablet = [x for x in professor if x.client  == websocket_ip][0]
+    prof_tablet.send_text(f"A랑 X의 거리는 {distance}야~")
+
+# init
+def init(device_name = "", websocket_ip = ""):
+    # Professor
+    if device_name.lower() == "professor":
+        professor[websocket_ip] = device_name
+        return True
+
+    # Student, Corner
+    if websocket_ip not in [x.client for x in all_sockets]:
+        return False
+    else:
+        t = [x for x in all_sockets if x.client  == websocket_ip]
+        all_sockets.remove(t[0])
+
+        if device_name.upper() in ["A", "B", "C", "D"]:
+            corners[device_name] = websocket_ip
+            return True
+        elif device_name.upper() in ["X", "Y", "Z"]:
+            students[device_name] = websocket_ip
+            return True
+        else:
+            return False
+
+async def start():
+    if len(students) + len(corners) < 4:
+        return False
+    else:
+        # (A => X) chirp 재생
+        # A의 websocket 찾기
+        await tellDeviceToChirp("A", "X")
+        await tellDeviceToChirp("A", "Y")
+        await tellDeviceToChirp("A", "Z")
+        
+
+async def tellDeviceToChirp(first, second):
+    first_send = [x for x in all_sockets if x.client  == students[f"{first}"]][0]
+    await first_send.send_text(f"빨리 {second}한테 첩 보내")
+    data = await first_send.receive_text()
+
+    second_send = [x for x in all_sockets if x.client  == corners[f"{second}"]][0]
+    await second_send.send_text(f"빨리 {first}한테 첩 보내")
+    data = await second_send.receive_text()
+
+    first_send.send_text("녹음 그만하고 파일 내 놔")
+    await second_send.send_text("녹음 그만하고 파일 내 놔")
+
+    f_file = first_send.receive_bytes()
+    s_file = second_send.receive_bytes()
+
+    f = open(f'uploaded_files/{first}_{second}.wav', 'w')
+    f.write(f_file)
+    f.close()
+
+    f = open(f'uploaded_files/{second}_{first}.wav', 'w')
+    f.write(s_file)
+    f.close()
+
+    return True
+
+async def acquire_lock():
     # lock
     global lock
     if lock == 0:
@@ -24,7 +91,6 @@ def acquire_lock():
     else:
         return False
 
-@app.get("/release_lock")
 def release_lock():
     # lock
     global lock
@@ -42,13 +108,13 @@ async def client(request: Request):
 
 @app.post("/files/")
 async def receive_audio_files(files: List[bytes] = File(...), sender_device_name = "None", receiver_device_name = "None"):
-    f = open(f'/uploaded_files/{sender_device_name}_{receiver_device_name}', 'w')
+    f = open(f'uploaded_files/{sender_device_name}_{receiver_device_name}.wav', 'w')
     f.write(files)
     f.close()
-    return {"file_sizes": [file.filename for file in files]}
+    return True
 
 @app.get("/test_files/")
-async def receive_audio_files(files: List[bytes] = File(...), sender_device_name = "None", receiver_device_name = "None"):
+async def receive_audio_files(files: List[bytes] = File(...)):
     contents = """
         <body>
             <form action="/receive_audio_files/" enctype="multipart/form-data" method="get">
@@ -65,10 +131,20 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"client connected : {websocket.client}")
     await websocket.accept() # client의 websocket접속 허용
     await websocket.send_text(f"Welcome client : {websocket.client}")
+    all_sockets.append(websocket)
+
     while True:
-        data = await websocket.receive_text()  # client 메시지 수신대기
+        data = await websocket.receive_json()  # client 메시지 수신대기
         print(f"message received : {data} from : {websocket.client}")
-        await websocket.send_text(f"Message text was: {data}") # client에 메시지 전달
+
+        if data["type"] == "init":
+            init(data["device_name"], data["websocket_ip"])
+        elif data["type"] == "start":
+            start()
+        else:
+            print("정의되지 않은 type입니다.")
+    return
+    
 
 # 개발/디버깅용으로 사용할 앱 구동 함수
 def run():
