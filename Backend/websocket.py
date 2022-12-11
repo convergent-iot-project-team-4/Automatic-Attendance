@@ -14,13 +14,12 @@ import matlab.engine # MATLAB engine API import
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-lock = 0
-professor = {} # {device_name:WebSocket}
-students = {} # {device_name:WebSocket}
-corners = {} # {device_name:WebSocket}
+professor: dict[str, WebSocket] = {} # {device_name:WebSocket}
+students: dict[str, WebSocket] = {} # {device_name:WebSocket}
+corners: dict[str, WebSocket] = {} # {device_name:WebSocket}
 
 # web sockets; type: [WebSocket]
-all_sockets = []
+all_sockets: list[WebSocket] = []
 
 def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"):
     eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
@@ -56,6 +55,8 @@ def init(device_name:str, device_type: str, websocket):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    global students, corners, professor
+
     print(f"client connected : {websocket.client}")
     await websocket.accept() # client의 websocket접속 허용
     await websocket.send_text(f"Welcome client : {websocket.client}")
@@ -67,52 +68,43 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if data["type"] == "init":
             init(data["device_name"], websocket)
+            # sort students, corners via name
+            students = sorted(students, key=lambda x:x[0])
+            corners = sorted(corners, key=lambda x:x[0])
+
             while True:
                 await asyncio.sleep(1.0)
         elif data["type"] == "start":
             if len(students) + len(corners) < 0:
                 return False
             else:
-                student = "X"
-                corner = "A"
-                first_send = students[student]
-                second_send = corners[corner]
+                for student in students:
+                    for corner in corners:
+                        await student.send_text(f"start_recording")
+                        await corner.send_text(f"start_recording")
 
-                await first_send.send_text(f"녹음 시작해")
-                await second_send.send_text(f"녹음 시작해")
+                        
+                        await student.send_text(f"play_chirp")
+                        data = await student.receive_json()
+                        print(data)
+                        
+                        await corner.send_text(f"play_chirp")
+                        data = await corner.receive_json()
+                        print(data)
+                        
+                        await student.send_text("send_wav_file")
+                        await corner.send_text("send_wav_file")
 
-                await first_send.send_text(f"빨리 {corner}한테 첩 보내")
-                print("trying to receive")
-                data = await first_send.receive_json()
-                print(data)
-                # await first_send.receive_text()
-                # cannot call recv while another coroutine is already waiting for the next message
+                        f_file = await first_send.receive_bytes()
+                        s_file = await second_send.receive_bytes()
 
-                await second_send.send_text(f"빨리 {student}한테 첩 보내")
-                await second_send.receive_text() # 다 했어 받을때까지 기다림
+                        f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
+                        f.write(f_file)
+                        f.close()
 
-
-                first_start_recording = asyncio.create_task(
-                    first_send.send_text("녹음 그만하고 파일 내 놔")
-                )
-                second_start_recording = asyncio.create_task(
-                    second_send.send_text("녹음 그만하고 파일 내 놔")
-                )
-
-                await first_start_recording
-                await second_start_recording
-
-
-                f_file = await first_send.receive_bytes()
-                s_file = await second_send.receive_bytes()
-
-                f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
-                f.write(f_file)
-                f.close()
-
-                f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
-                f.write(s_file)
-                f.close()
+                        f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
+                        f.write(s_file)
+                        f.close()
         else:
             print("정의되지 않은 type입니다.")
     return
