@@ -50,20 +50,24 @@ def init(device_name, device_type, websocket):
     else:
         return False
 
-def makeFolderAndSaveWavFile(student, corner, body, isStudentsRecord):
+def makeFolderAndSaveWavFile(student: Dict[str, WebSocket], corner: Dict[str, WebSocket], body: str, isStudentsRecord: bool):
     global students, corners, professor
-    directory = student+ "_" + corner
+
+    keys_c = list(corner.keys())[0]
+    keys_s = list(student.keys())[0]
+    
+    fileName = f'{keys_c}_{keys_s}.wav'
+    directory = keys_s + "_" + keys_c
     os.makedirs("uploaded_files/" + directory, exist_ok=True)
 
     if isStudentsRecord:
-        fileName = 'uploaded_files/{directory}/{student}_{corner}.wav'
+        fileName = 'uploaded_files/{directory}/{keys_s}_{keys_c}.wav'
     else:
-        fileName = 'uploaded_files/{directory}/{corner}_{student}.wav'
+        fileName = 'uploaded_files/{directory}/{keys_c}_{keys_s}.wav'
     
     wav_file = open(fileName, "wb")
     decode_string = base64.b64decode(body)
     wav_file.write(decode_string)
-
     return
 
 @app.websocket("/ws")
@@ -83,29 +87,32 @@ async def websocket_endpoint(websocket: WebSocket):
                 await asyncio.sleep(1.0)
         elif data["type"] == "start":
             if len(students) + len(corners) < 0:
+                print("device not enough to start.")
                 return False
             else:
-                for (student, _) in students:
-                    for (corner, _) in corners:
-                        await student.send_text(f"start_recording")
-                        await corner.send_text(f"start_recording")
+                print(students)
+                print(corners)
+                for s_key, student_value in students.items():
+                    for c_key, corner_value in corners.items():
+                        await student_value.send_text(f"start_recording")
+                        await corner_value.send_text(f"start_recording")
 
-                        await student.send_text(f"play_chirp")
-                        data = await student.receive_json()
+                        await student_value.send_text(f"play_chirp")
+                        data = await student_value.receive_json()
                         print(data)
                         
-                        await corner.send_text(f"play_chirp")
-                        data = await corner.receive_json()
+                        await corner_value.send_text(f"play_chirp")
+                        data = await corner_value.receive_json()
                         print(data)
                         
-                        await student.send_text("send_wav_file")
-                        await corner.send_text("send_wav_file")
+                        await student_value.send_text("send_wav_file")
+                        await corner_value.send_text("send_wav_file")
 
-                        s_file = await student.receive_json()
-                        c_file = await corner.receive_json()
+                        s_file = await student_value.receive_json()
+                        c_file = await corner_value.receive_json()
 
-                        makeFolderAndSaveWavFile(student, corner, s_file["body"], True)
-                        makeFolderAndSaveWavFile(student, corner, c_file["body"], False)
+                        makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, s_file["body"], True)
+                        makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, c_file["body"], False)
 
         else:
             print("정의되지 않은 type입니다.")
