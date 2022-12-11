@@ -34,22 +34,25 @@ def send_point(distance, websocket):
     prof_tablet.send_text(distance)
 
 # init
-def init(device_name, websocket):
+def init(device_name:str, device_type: str, websocket):
+    global professor
+    global corners
+    global students
+
     # Professor
-    if device_name.lower() == "professor":
+    if device_type == "professor":
         professor["professor"] = websocket
         return True
 
     # Student, Corner
-    if device_name.upper() in ["A", "B", "C", "D"]:
+    if device_type == "corner":
         corners[device_name] = websocket
         return True
-    elif device_name.upper() in ["X", "Y", "Z"]:
+    if device_type == "student":
         students[device_name] = websocket
         return True
     else:
         return False
-
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
