@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.logger import logger
 import time
 import asyncio
-import matlab.engine # MATLAB engine API import
+# import matlab.engine # MATLAB engine API import
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -57,7 +57,7 @@ async def start_chirps():
         # (A => X) chirp 재생
         # A의 websocket 찾기
         await tellDeviceToChirp("X", "A")
-        BeepBeep()
+        # BeepBeep()
 
         # await tellDeviceToChirp("A", "Y")
         # await tellDeviceToChirp("A", "Z")
@@ -70,14 +70,14 @@ async def tellDeviceToChirp(student, corner):
     await first_send.send_text(f"녹음 시작해")
     await second_send.send_text(f"녹음 시작해")
 
-    first_send.send_text(f"빨리 {corner}한테 첩 보내")
-    # cannot call recv while another coroutine is already waiting for the next message
-    while True:
-        data = await first_send.receive_text() # cannot call recv while another coroutine is already waiting for the next message
+    await first_send.send_text(f"빨리 {corner}한테 첩 보내")
+    print("trying to receive")
+    data = await first_send.receive_text()
+    print(data)
     # await first_send.receive_text() # 다 했어 받을때까지 기다림 -> 여기서 터짐, 
     # cannot call recv while another coroutine is already waiting for the next message
 
-    second_send.send_text(f"빨리 {student}한테 첩 보내")
+    await second_send.send_text(f"빨리 {student}한테 첩 보내")
     await second_send.receive_text() # 다 했어 받을때까지 기다림
 
 
