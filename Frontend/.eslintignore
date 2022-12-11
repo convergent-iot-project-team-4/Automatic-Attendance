@@ -1,0 +1,9 @@
+node_modules
+docs
+build
+dist
+.git
+.vscode
+.husky
+config-overrides.js
+src/assets
