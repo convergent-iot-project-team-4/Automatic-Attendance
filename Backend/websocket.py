@@ -10,6 +10,7 @@ from fastapi.logger import logger
 import time
 import asyncio
 import matlab.engine # MATLAB engine API import
+import os, base64
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -53,6 +54,21 @@ def init(device_name:str, device_type: str, websocket):
     else:
         return False
 
+async def makeFolderAndSaveWavFile(student: WebSocket, corner: WebSocket, body: str, isStudentsRecord: bool):
+    directory = f"{student}_{corner}"
+    os.makedirs("uploaded_files/" + directory, exist_ok=True)
+
+    if isStudentsRecord:
+        fileName = 'uploaded_files/{directory}/{student}_{corner}.wav'
+    else:
+        fileName = 'uploaded_files/{directory}/{corner}_{student}.wav'
+    
+    wav_file = open(fileName, "wb")
+    decode_string = base64.b64decode(body)
+    wav_file.write(decode_string)
+
+    return
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     global students, corners, professor
@@ -67,7 +83,7 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"message received : {data} from : {websocket.client}")
 
         if data["type"] == "init":
-            init(data["device_name"], websocket)
+            init(data["device_name"], data["device_type"], websocket)
             # sort students, corners via name
             students = sorted(students, key=lambda x:x[0])
             corners = sorted(corners, key=lambda x:x[0])
@@ -95,16 +111,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         await student.send_text("send_wav_file")
                         await corner.send_text("send_wav_file")
 
-                        f_file = await first_send.receive_bytes()
-                        s_file = await second_send.receive_bytes()
+                        s_file = await student.receive_json()
+                        c_file = await corner.receive_json()
 
-                        f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
-                        f.write(f_file)
-                        f.close()
+                        makeFolderAndSaveWavFile(student, corner, s_file["body"], True)
+                        makeFolderAndSaveWavFile(student, corner, c_file["body"], False)
 
-                        f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
-                        f.write(s_file)
-                        f.close()
         else:
             print("정의되지 않은 type입니다.")
     return
