@@ -19,26 +19,22 @@ professor: Dict[str, WebSocket] = {} # {device_name:WebSocket}
 students: Dict[str, WebSocket] = {} # {device_name:WebSocket}
 corners:Dict[str, WebSocket] = {} # {device_name:WebSocket}
 
-# web sockets; type: [WebSocket]
-all_sockets = []
-
 def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"):
+    global students, corners, professor
     eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
     ret = eng.BeepBeep(fileA, fileB, chirp)
     print(ret)
     return ret
 
 def send_point(distance, websocket):
+    global students, corners, professor
     # professor 찾기
     prof_tablet = websocket
     prof_tablet.send_text(distance)
 
 # init
 def init(device_name, device_type, websocket):
-    global professor
-    global corners
-    global students
-
+    global students, corners, professor
     # Professor
     if device_type == "professor":
         corners.update({device_name: websocket})
@@ -55,6 +51,7 @@ def init(device_name, device_type, websocket):
         return False
 
 def makeFolderAndSaveWavFile(student, corner, body, isStudentsRecord):
+    global students, corners, professor
     directory = student+ "_" + corner
     os.makedirs("uploaded_files/" + directory, exist_ok=True)
 
@@ -72,7 +69,6 @@ def makeFolderAndSaveWavFile(student, corner, body, isStudentsRecord):
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     global students, corners, professor
-
     print(f"client connected : {websocket.client}")
     await websocket.accept() # client의 websocket접속 허용
     await websocket.send_text(f"Welcome client : {websocket.client}")
@@ -83,21 +79,17 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if data["type"] == "init":
             init(data["device_name"], data["device_type"], websocket)
-            # sort students, corners via name
-            students = sorted(students.items())
-            corners = sorted(corners.items())
             while True:
                 await asyncio.sleep(1.0)
         elif data["type"] == "start":
             if len(students) + len(corners) < 0:
                 return False
             else:
-                for student in students:
-                    for corner in corners:
+                for (student, _) in students:
+                    for (corner, _) in corners:
                         await student.send_text(f"start_recording")
                         await corner.send_text(f"start_recording")
 
-                        
                         await student.send_text(f"play_chirp")
                         data = await student.receive_json()
                         print(data)
