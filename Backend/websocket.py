@@ -20,7 +20,7 @@ students = {} # {device_name:WebSocket}
 corners = {} # {device_name:WebSocket}
 
 # web sockets; type: [WebSocket]
-all_sockets = [] 
+all_sockets = []
 
 def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"):
     eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
@@ -32,7 +32,7 @@ def send_point(distance, websocket):
     # professor 찾기
     prof_tablet = websocket
     prof_tablet.send_text(distance)
-    
+
 # init
 def init(device_name, websocket):
     # Professor
@@ -83,65 +83,63 @@ async def websocket_endpoint(websocket: WebSocket):
 
         if data["type"] == "init":
             init(data["device_name"], websocket)
+            while True:
+                await asyncio.sleep(1.0)
+                await websocket.send_text("asdf")
         elif data["type"] == "start":
             if len(students) + len(corners) < 0:
                 return False
             else:
-                break
+                student = "X"
+                corner = "A"
+                first_send = students[student]
+                second_send = corners[corner]
 
-                
+                await first_send.send_text(f"녹음 시작해")
+                await second_send.send_text(f"녹음 시작해")
+
+                await first_send.send_text(f"빨리 {corner}한테 첩 보내")
+                print("trying to receive")
+                data = await first_send.receive_json()
+                print(data)
+                # await first_send.receive_text()
+                # cannot call recv while another coroutine is already waiting for the next message
+
+                await second_send.send_text(f"빨리 {student}한테 첩 보내")
+                await second_send.receive_text() # 다 했어 받을때까지 기다림
+
+
+                first_start_recording = asyncio.create_task(
+                    first_send.send_text("녹음 그만하고 파일 내 놔")
+                )
+                second_start_recording = asyncio.create_task(
+                    second_send.send_text("녹음 그만하고 파일 내 놔")
+                )
+
+                await first_start_recording
+                await second_start_recording
+
+
+                f_file = await first_send.receive_bytes()
+                s_file = await second_send.receive_bytes()
+
+                f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
+                f.write(f_file)
+                f.close()
+
+                f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
+                f.write(s_file)
+                f.close()
         else:
             print("정의되지 않은 type입니다.")
+    return
 
-
-    student = "X"
-    corner = "A"
-    first_send = students[student]
-    second_send = corners[corner]
-
-    await first_send.send_text(f"녹음 시작해")
-    await second_send.send_text(f"녹음 시작해")
-
-    await first_send.send_text(f"빨리 {corner}한테 첩 보내")
-    print("trying to receive")
-    data = await first_send.receive_json()
-    print(data)
-    # await first_send.receive_text()
-    # cannot call recv while another coroutine is already waiting for the next message
-
-    await second_send.send_text(f"빨리 {student}한테 첩 보내")
-    await second_send.receive_text() # 다 했어 받을때까지 기다림
-
-
-    first_start_recording = asyncio.create_task(
-        first_send.send_text("녹음 그만하고 파일 내 놔")
-    )
-    second_start_recording = asyncio.create_task(
-        second_send.send_text("녹음 그만하고 파일 내 놔")
-    )
-
-    await first_start_recording
-    await second_start_recording
-    
-
-    f_file = await first_send.receive_bytes()
-    s_file = await second_send.receive_bytes()
-
-    f = open(f'uploaded_files/{student}_{corner}.wav', 'w')
-    f.write(f_file)
-    f.close()
-
-    f = open(f'uploaded_files/{corner}_{student}.wav', 'w')
-    f.write(s_file)
-    f.close()
-
-    
 
 # 개발/디버깅용으로 사용할 앱 구동 함수
 def run():
     import uvicorn
     uvicorn.run(app, host='0.0.0.0', port='8000')
-    
+
 # python main.py로 실행할경우 수행되는 구문
 # uvicorn main:app 으로 실행할 경우 아래 구문은 수행되지 않는다.
 if __name__ == "__main__":
