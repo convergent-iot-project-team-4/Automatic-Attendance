@@ -61,14 +61,14 @@ def makeFolderAndSaveWavFile(student: Dict[str, WebSocket], corner: Dict[str, We
     os.makedirs("uploaded_files/" + directory, exist_ok=True)
 
     if isStudentsRecord:
-        fileName = 'uploaded_files/{directory}/{keys_s}_{keys_c}.wav'
+        fileName = f'uploaded_files/{directory}/{keys_s}_{keys_c}.wav'
     else:
-        fileName = 'uploaded_files/{directory}/{keys_c}_{keys_s}.wav'
+        fileName = f'uploaded_files/{directory}/{keys_c}_{keys_s}.wav'
     
     wav_file = open(fileName, "wb")
     decode_string = base64.b64decode(body)
     wav_file.write(decode_string)
-    return
+    return fileName
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -111,8 +111,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         s_file = await student_value.receive_json()
                         c_file = await corner_value.receive_json()
 
-                        makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, s_file["body"], True)
-                        makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, c_file["body"], False)
+                        student_file_path = makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, s_file["body"], True)
+                        corner_file_path = makeFolderAndSaveWavFile({s_key: student_value}, {c_key: corner_value}, c_file["body"], False)
+
+                        BeepBeep(student_file_path, corner_file_path)
 
         else:
             print("정의되지 않은 type입니다.")
