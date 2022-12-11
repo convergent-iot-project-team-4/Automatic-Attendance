@@ -1,7 +1,7 @@
 #!usr/bin/python
 # -*- coding: utf8 -*-
 
-from typing import List
+from typing import List, Dict
 from fastapi import FastAPI, WebSocket, Request, File, UploadFile
 
 from fastapi.responses import HTMLResponse
@@ -15,12 +15,12 @@ import os, base64
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-professor: dict[str, WebSocket] = {} # {device_name:WebSocket}
-students: dict[str, WebSocket] = {} # {device_name:WebSocket}
-corners: dict[str, WebSocket] = {} # {device_name:WebSocket}
+professor: Dict[str, WebSocket] = {} # {device_name:WebSocket}
+students: Dict[str, WebSocket] = {} # {device_name:WebSocket}
+corners:Dict[str, WebSocket] = {} # {device_name:WebSocket}
 
 # web sockets; type: [WebSocket]
-all_sockets: list[WebSocket] = []
+all_sockets = []
 
 def BeepBeep(fileA = "devA_25cm.wav", fileB = "devB_25cm.wav", chirp="chirp.wav"):
     eng = matlab.engine.start_matlab() # MATLAB engine 객체 생성
@@ -34,28 +34,28 @@ def send_point(distance, websocket):
     prof_tablet.send_text(distance)
 
 # init
-def init(device_name:str, device_type: str, websocket):
+def init(device_name, device_type, websocket):
     global professor
     global corners
     global students
 
     # Professor
     if device_type == "professor":
-        professor["professor"] = websocket
+        corners.update({device_name: websocket})
         return True
 
     # Student, Corner
     if device_type == "corner":
-        corners[device_name] = websocket
+        corners.update({device_name: websocket})
         return True
     if device_type == "student":
-        students[device_name] = websocket
+        students.update({device_name: websocket})
         return True
     else:
         return False
 
-async def makeFolderAndSaveWavFile(student: WebSocket, corner: WebSocket, body: str, isStudentsRecord: bool):
-    directory = f"{student}_{corner}"
+def makeFolderAndSaveWavFile(student, corner, body, isStudentsRecord):
+    directory = student+ "_" + corner
     os.makedirs("uploaded_files/" + directory, exist_ok=True)
 
     if isStudentsRecord:
@@ -76,7 +76,6 @@ async def websocket_endpoint(websocket: WebSocket):
     print(f"client connected : {websocket.client}")
     await websocket.accept() # client의 websocket접속 허용
     await websocket.send_text(f"Welcome client : {websocket.client}")
-    all_sockets.append(websocket)
 
     while True:
         data = await websocket.receive_json()  # client 메시지 수신대기
@@ -85,9 +84,8 @@ async def websocket_endpoint(websocket: WebSocket):
         if data["type"] == "init":
             init(data["device_name"], data["device_type"], websocket)
             # sort students, corners via name
-            students = sorted(students, key=lambda x:x[0])
-            corners = sorted(corners, key=lambda x:x[0])
-
+            students = sorted(students.items())
+            corners = sorted(corners.items())
             while True:
                 await asyncio.sleep(1.0)
         elif data["type"] == "start":
