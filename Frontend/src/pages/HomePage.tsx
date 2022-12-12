@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const ACTUAL_WIDTH = 5; //meters
 const ACTUAL_HEIGHT = 3; //meters
@@ -7,7 +7,7 @@ const CANVAS_WIDTH = 1000;
 const CANVAS_HEIGHT = CANVAS_WIDTH / WH_RATIO;
 const PM_RATIO = CANVAS_WIDTH / ACTUAL_WIDTH;
 const IMAGE_SIZE = 100;
-const webSocketUrl = 'ws://127.0.0.1:8000/ws';
+const webSocketUrl = 'ws://172.20.10.3:8000/ws';
 
 type Position = 'ld' | 'lu' | 'rd' | 'ru';
 
@@ -62,49 +62,96 @@ function canvasLenConverter(meter = 0) {
   return meter * PM_RATIO;
 }
 
+interface DeviceData {
+  position: Position;
+  distance: number;
+}
+
 const HomePage = () => {
+  const [init, setInit] = useState(false);
+  const triangularRef = useRef<Triangulation | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const [deviceAData, setDeviceAData] = useState<DeviceData>({
+    position: 'lu',
+    distance: 0,
+  });
+
+  const [deviceBData, setDeviceBData] = useState<DeviceData>({
+    position: 'ru',
+    distance: 0,
+  });
+
+  const [deviceCData, setDeviceCData] = useState<DeviceData>({
+    position: 'ld',
+    distance: 0,
+  });
 
   // web socket
   const [socketConnected, setSocketConnected] = useState(false);
-  const [sendMsg, setSendMsg] = useState(false);
-  const [items, setItems] = useState([]);
   const ws = useRef<WebSocket | null>(null);
   //
 
-  function canvasDrawArea(position: Position, radius = 0) {
-    if (!canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.fillStyle = '#FF0000';
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
+  const canvasDrawPhoneIcon = useCallback((position: Position) => {
     let x = -1;
     let y = -1;
     switch (position) {
       case 'ld':
-        x = 0;
-        y = CANVAS_HEIGHT;
+        x = IMAGE_SIZE / 2;
+        y = CANVAS_HEIGHT - IMAGE_SIZE / 2;
         break;
       case 'lu':
-        x = 0;
-        y = 0;
+        x = IMAGE_SIZE / 2;
+        y = IMAGE_SIZE / 2;
         break;
       case 'rd':
-        x = CANVAS_WIDTH;
-        y = CANVAS_HEIGHT;
+        x = CANVAS_WIDTH - IMAGE_SIZE / 2;
+        y = CANVAS_HEIGHT - IMAGE_SIZE / 2;
         break;
       case 'ru':
-        x = CANVAS_WIDTH;
-        y = 0;
+        x = CANVAS_WIDTH - IMAGE_SIZE;
+        y = IMAGE_SIZE / 2;
         break;
     }
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+    canvasDrawIcon(x, y, 'phone_android');
+  }, []);
 
-    canvasDrawPhoneIcon(position);
-  }
+  const canvasDrawArea = useCallback(
+    (position: Position, radius = 0) => {
+      if (!canvasRef.current) return;
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#FF0000';
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      let x = -1;
+      let y = -1;
+      switch (position) {
+        case 'ld':
+          x = 0;
+          y = CANVAS_HEIGHT;
+          break;
+        case 'lu':
+          x = 0;
+          y = 0;
+          break;
+        case 'rd':
+          x = CANVAS_WIDTH;
+          y = CANVAS_HEIGHT;
+          break;
+        case 'ru':
+          x = CANVAS_WIDTH;
+          y = 0;
+          break;
+      }
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      canvasDrawPhoneIcon(position);
+    },
+    [canvasDrawPhoneIcon],
+  );
 
   function canvasDrawIcon(x = 0, y = 0, icon = '') {
     if (!canvasRef.current) return;
@@ -127,29 +174,6 @@ const HomePage = () => {
       icon +
       '/v12/24px.svg';
   }
-  function canvasDrawPhoneIcon(position = '') {
-    let x = -1;
-    let y = -1;
-    switch (position) {
-      case 'ld':
-        x = IMAGE_SIZE / 2;
-        y = CANVAS_HEIGHT - IMAGE_SIZE / 2;
-        break;
-      case 'lu':
-        x = IMAGE_SIZE / 2;
-        y = IMAGE_SIZE / 2;
-        break;
-      case 'rd':
-        x = CANVAS_WIDTH - IMAGE_SIZE / 2;
-        y = CANVAS_HEIGHT - IMAGE_SIZE / 2;
-        break;
-      case 'ru':
-        x = CANVAS_WIDTH - IMAGE_SIZE;
-        y = IMAGE_SIZE / 2;
-        break;
-    }
-    canvasDrawIcon(x, y, 'phone_android');
-  }
 
   const initCanvas = () => {
     if (!canvasRef.current) return;
@@ -158,19 +182,70 @@ const HomePage = () => {
     canvas.width = CANVAS_WIDTH;
   };
 
+  const recalculatePosition = useCallback(
+    (position: Position, distance: number) => {
+      canvasDrawArea(position, canvasLenConverter(distance));
+      if (!triangularRef.current) {
+        triangularRef.current = new Triangulation(
+          new Point(0, 0, canvasLenConverter(deviceAData.distance)),
+          new Point(0, 600, canvasLenConverter(deviceCData.distance)),
+          new Point(1000, 0, canvasLenConverter(deviceBData.distance)),
+        );
+      } else {
+        switch (position) {
+          case 'ld':
+            triangularRef.current.c = new Point(
+              0,
+              600,
+              canvasLenConverter(distance),
+            );
+            break;
+          case 'lu':
+            triangularRef.current.a = new Point(
+              0,
+              0,
+              canvasLenConverter(distance),
+            );
+            break;
+          case 'rd':
+            triangularRef.current.b = new Point(
+              1000,
+              0,
+              canvasLenConverter(distance),
+            );
+            break;
+        }
+      }
+      const calculatedPos = triangularRef.current.calc();
+      canvasDrawIcon(calculatedPos.x, calculatedPos.y, 'account_circle');
+    },
+    [
+      canvasDrawArea,
+      deviceAData.distance,
+      deviceBData.distance,
+      deviceCData.distance,
+    ],
+  );
+
   useEffect(() => {
-    initCanvas();
-    canvasDrawArea('lu', canvasLenConverter(2));
-    canvasDrawArea('ld', canvasLenConverter(3.2));
-    canvasDrawArea('ru', canvasLenConverter(3.3));
-    const newTriangular = new Triangulation(
-      new Point(0, 0, canvasLenConverter(2)),
-      new Point(0, 600, canvasLenConverter(3.2)),
-      new Point(1000, 0, canvasLenConverter(3.3)),
-    );
-    const calculatedPos = newTriangular.calc();
-    canvasDrawIcon(calculatedPos.x, calculatedPos.y, 'account_circle');
-  }, []);
+    if (!init) {
+      initCanvas();
+      setInit(true);
+    } else {
+      recalculatePosition(deviceAData.position, deviceAData.distance);
+      recalculatePosition(deviceBData.position, deviceBData.distance);
+      recalculatePosition(deviceCData.position, deviceCData.distance);
+    }
+  }, [
+    deviceAData.distance,
+    deviceAData.position,
+    deviceBData.distance,
+    deviceBData.position,
+    deviceCData.distance,
+    deviceCData.position,
+    init,
+    recalculatePosition,
+  ]);
 
   // 소켓 객체 생성
   useEffect(() => {
@@ -188,9 +263,34 @@ const HomePage = () => {
         console.log('connection error ' + webSocketUrl);
         console.log(error);
       };
+      // "type": "noticeToProfessor",
+      // "corner": "A",
+      // "student": "X",
+      // "distance": 1.234
       ws.current.onmessage = evt => {
         const data = JSON.parse(evt.data);
-        console.log(data);
+        if (data) {
+          const { type, corner, student, distance } = data;
+          if (type === 'noticeToProfessor') {
+            console.log(corner, student, distance);
+            if (corner === 'A') {
+              setDeviceAData({
+                position: 'lu',
+                distance,
+              });
+            } else if (corner === 'B') {
+              setDeviceBData({
+                position: 'ru',
+                distance,
+              });
+            } else if (corner === 'C') {
+              setDeviceCData({
+                position: 'ld',
+                distance,
+              });
+            }
+          }
+        }
       };
     }
 
@@ -205,11 +305,11 @@ const HomePage = () => {
     if (ws.current && socketConnected) {
       ws.current.send(
         JSON.stringify({
-          message: sendMsg,
+          type: 'init',
+          device_name: 'professor',
+          device_type: 'professor',
         }),
       );
-
-      setSendMsg(true);
     }
   }, [socketConnected]);
 
