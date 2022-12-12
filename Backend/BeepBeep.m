@@ -3,18 +3,16 @@ function bools = BeepBeep(file_1, file_2, chirp)
 
     % A chirp signal of 1 second 
     % with a freq range of [1, 18]kHz 
-    x = audioread(strcat('uploaded_files/', chirp));
+    x = audioread(chirp);
 
     groundTruth = 25; % cm
 
     % Load data received by two different devices
     y = struct();
-    y(1).raw = audioread(...
-        [strcat('uploaded_files/',file_1)]);
-
-    y(2).raw = audioread(...
-        [strcat('uploaded_files/',file_2)]);
-    
+    disp(file_1)
+    disp(file_2)
+    y(1).raw = audioread(file_1);
+    y(2).raw = audioread(file_2);
     for i = 1:2
         y(i).xcorr = conv(flipud(x), y(i).raw(:));
     end
