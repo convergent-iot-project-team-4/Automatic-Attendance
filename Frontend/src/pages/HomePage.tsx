@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const ACTUAL_WIDTH = 5; //meters
 const ACTUAL_HEIGHT = 3; //meters
@@ -7,6 +7,7 @@ const CANVAS_WIDTH = 1000;
 const CANVAS_HEIGHT = CANVAS_WIDTH / WH_RATIO;
 const PM_RATIO = CANVAS_WIDTH / ACTUAL_WIDTH;
 const IMAGE_SIZE = 100;
+const webSocketUrl = 'ws://127.0.0.1:8000/ws';
 
 type Position = 'ld' | 'lu' | 'rd' | 'ru';
 
@@ -63,6 +64,13 @@ function canvasLenConverter(meter = 0) {
 
 const HomePage = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // web socket
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [sendMsg, setSendMsg] = useState(false);
+  const [items, setItems] = useState([]);
+  const ws = useRef<WebSocket | null>(null);
+  //
 
   function canvasDrawArea(position: Position, radius = 0) {
     if (!canvasRef.current) return;
@@ -163,6 +171,47 @@ const HomePage = () => {
     const calculatedPos = newTriangular.calc();
     canvasDrawIcon(calculatedPos.x, calculatedPos.y, 'account_circle');
   }, []);
+
+  // 소켓 객체 생성
+  useEffect(() => {
+    if (!ws.current) {
+      ws.current = new WebSocket(webSocketUrl);
+      ws.current.onopen = () => {
+        console.log('connected to ' + webSocketUrl);
+        setSocketConnected(true);
+      };
+      ws.current.onclose = error => {
+        console.log('disconnect from ' + webSocketUrl);
+        console.log(error);
+      };
+      ws.current.onerror = error => {
+        console.log('connection error ' + webSocketUrl);
+        console.log(error);
+      };
+      ws.current.onmessage = evt => {
+        const data = JSON.parse(evt.data);
+        console.log(data);
+      };
+    }
+
+    return () => {
+      console.log('clean up');
+      if (ws.current) ws.current.close();
+    };
+  }, []);
+
+  // 소켓이 연결되었을 시에 send 메소드
+  useEffect(() => {
+    if (ws.current && socketConnected) {
+      ws.current.send(
+        JSON.stringify({
+          message: sendMsg,
+        }),
+      );
+
+      setSendMsg(true);
+    }
+  }, [socketConnected]);
 
   return (
     <div>
