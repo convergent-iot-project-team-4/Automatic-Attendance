@@ -1,5 +1,5 @@
 function bools = BeepBeep(file_1, file_2, chirp)
-    rate = 48000; % sampling rate
+    rate = 44100; % sampling rate
 
     % A chirp signal of 1 second 
     % with a freq range of [1, 18]kHz 
@@ -29,8 +29,8 @@ function bools = BeepBeep(file_1, file_2, chirp)
     y(2).etoa = y(2).etoa + 10;
 
     c = 34000; % cm/s
-    dAA = 3.5; % Spk-to-mic distance in devA
-    dBB = 3.5; % Spk-to-mic distance in devB
+    dAA = 2; % Spk-to-mic distance in devA
+    dBB = 2; % Spk-to-mic distance in devB
 
     % c * (tB1 - tA1) + c * (tA3 - tB3) + (dAA + dBB)
     
